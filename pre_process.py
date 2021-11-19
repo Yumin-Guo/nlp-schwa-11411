@@ -47,13 +47,15 @@ def make_sentence(path):
 def make_wh_questions(sentences,acc):
 	out=[]
 	
-	for i,sentence in enumerate(sentences): 
+	for i,sentence in enumerate(sentences):
 		print(i)
-		print(acc)
-		out=out+make_wh_question(sentence)
-		acc-=1
+		temp=make_wh_question(sentence)
+		if temp !=[]:
+			out=out+temp
+			acc-=1
 		if(acc==0):
 			return out
+	return out
 
 	
 
@@ -61,13 +63,16 @@ def make_wh_questions(sentences,acc):
 
 if __name__ == '__main__':
 	
-	path1="../nlp_proj/hp.txt"
+	path1="../nlp_proj/a1.txt"
 	sentences=make_sentence(path1)
 	out1=make_wh_questions(sentences,10)
 	
+	
 	path1="../nlp_proj/chinese.txt"
 	sentences=make_sentence(path1)
-	out1=out1+make_wh_questions(sentences[30:90],14)
+	
+
+	out1=out1+make_wh_questions(sentences,10)
 	print(out1)
 
 
