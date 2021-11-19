@@ -1,0 +1,194 @@
+#!/usr/bin/python3 -W ignore::DeprecationWarning
+# -*- coding:utf8 -*-
+
+# all necessary packages
+from bs4 import BeautifulSoup as Soup
+import nltk
+# nltk.download('punkt')
+# nltk.download('stopwords')
+from nltk.corpus import stopwords
+stop_words = set(stopwords.words('english'))
+
+import spacy
+# import neuralcoref
+# nlp = spacy.load('en_core_web_sm')  
+# neuralcoref.add_to_pipe(nlp)
+
+import re
+import heapq
+import io
+import sys
+
+# setup for finding most similar sentence
+from sentence_transformers import SentenceTransformer, util
+model = SentenceTransformer('nq-distilbert-base-v1')
+# from nltk.tokenize import sent_tokenize
+# from sklearn.metrics.pairwise import cosine_similarity
+
+# setup for question answering system
+from transformers import BertForQuestionAnswering, AutoTokenizer
+modelname = 'deepset/bert-base-cased-squad2'
+model_b = BertForQuestionAnswering.from_pretrained(modelname)
+tokenizer = AutoTokenizer.from_pretrained(modelname)
+from transformers import pipeline
+nlp_b = pipeline('question-answering', model=model_b, tokenizer=tokenizer)
+
+# topic recognition 
+def movie(text):
+    # assume text given is only the first sentence
+    return re.search("film", text, re.IGNORECASE) != None
+
+def football(text):
+    return re.searh("soccer player|footballer", text, re.IGNORECASE) != None
+
+def constellation(text):
+    return re.search("constellation", text, re.IGNORECASE) != None
+
+def language(text):
+    return re.search("language", text, re.IGNORECASE) != None
+
+def is_wh_question(question):
+    doc = nlp(question)
+    token = doc[0]
+    return token.tag_ in {"WRB", "WP"}
+
+def handle_1st(context, question):
+    # find in 1st sentence
+    first_sent = context.split("\n\n\n")[1].split(".")[0]
+    ans = nlp_b({
+        "question": question,
+        "context": first_sent
+    })
+    return ans["answer"]
+
+def handle_intro(context, question):
+    intro = context.split("\n\n\n")[1]
+    ans = nlp_b({
+        "question": question,
+        "context": intro
+    })
+    return ans["answer"]
+
+film_keywords_1st_sent = set(["genre", "country", "time"])
+film_1st_sent_handler = (film_keywords_1st_sent, handle_1st)
+film_keywords_intro = set(["written", "directed", "edited", "produced", "box office", \
+                            "review", "acclaimed", "praised", "criticized", "nominate", "award", "success"])
+film_intro_handler = (film_keywords_intro, handle_intro)
+film_handlers = [film_1st_sent_handler, film_intro_handler]
+
+def hardcode(context, question, handlers):
+    for keywords, handler in handlers:
+        for keyword in keywords:
+            if keyword in question:
+                ans = handler(context, question)
+                return ans
+    return None # answer can't be found through hardcode
+
+def check1(context, question):
+    ans = None
+    if movie(context):
+        ans = hardcode(context, question, film_handlers)
+    # elif football(context):
+    #     ans = hardcode(context, question, football_handlers)
+    # elif constellation(context):
+    #     ans = hardcode(context, question, constellation_handlers)
+    # elif language(context):
+    #     ans = hardcode(context, question, language_handlers)
+    
+    if ans:
+        return ans
+    return None
+
+def check2(text, questions):
+    q_embeddings = model.encode(questions)
+    sentences = []
+    for sent in nltk.sent_tokenize(text):
+        if sent != "\n":
+            sentences.append(sent)
+    txt_embeddings = model.encode(sentences)
+
+    similarities = util.pytorch_cos_sim(q_embeddings, txt_embeddings)
+
+    # from all candidate sentences, find the ones closer to the query
+    msize = 8
+    savings = [] # keep the top sentences
+    results = []
+    for idx in range(len(questions)):
+        question = questions[idx]
+        size = 0
+        pq = []
+        heapq.heapify(pq)
+
+        for (i, res) in enumerate(similarities[idx]):
+            score = res
+            heapq.heappush(pq, (score, sentences[i]))
+            size += 1
+            if size > msize:
+                heapq.heappop(pq)
+                size -= 1
+          
+        savings = pq.copy()
+        
+        similar_sents = []
+        for i in range(len(savings)):
+            similar_sents.append(savings[i][1])
+        
+        highest_score = 0
+        best_ans = ""
+        for similar_s in similar_sents:
+            ans = nlp_b({
+                "question": question,
+                "context": similar_s
+            })
+            if ans['score'] > highest_score:
+            #   print(question, ans)
+              highest_score = ans['score']
+              best_ans = ans['answer']
+
+        results.append(best_ans)
+    return results
+
+def main():
+    if len(sys.argv) != 3:
+        print("Usage: ./answer article.txt questions.txt")
+        sys.exit(1)
+
+    txt_file = sys.argv[1]
+    q_file = sys.argv[2]
+    html_file = txt_file[:-3]+"htm"
+    # txt_file = "a1.txt"
+    # q_file = "test_questions.txt"
+    # html_file = txt_file[:-3]+"htm"
+
+    with io.open(txt_file, 'r', encoding='utf8') as f:
+        txt_text = f.read()
+    
+    with io.open(html_file, 'r') as f:
+        soup = Soup(f, "html.parser")
+
+    with io.open(q_file, 'r', encoding='utf8') as f:
+        questions = f.readlines()
+
+    answers = []
+    empty_lst = []
+    empty_qs = []
+    for (i, question) in enumerate(questions):
+        ans = check1(txt_text, question)
+        if ans:
+            answers.append(ans)
+        else:
+            empty_lst.append(i)
+            empty_qs.append(question)
+    
+    # print(empty_qs)
+    # new_answers = []
+    anses = check2(txt_text, empty_qs)
+    for (i, ans) in enumerate(anses):
+      answers.insert(empty_lst[i], ans)
+
+    for answer in answers:
+        print(answer)
+
+if __name__ == '__main__':
+    main()
+

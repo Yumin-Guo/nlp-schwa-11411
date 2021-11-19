@@ -1,0 +1,236 @@
+#!/usr/bin/python3 -W ignore::DeprecationWarning
+# -*- coding:utf8 -*-
+
+import sys
+import stanza
+import spacy
+import re 
+
+# repetitive codes a lot, but easy for make adjustment according
+# to the question type 
+def closest_n(text,word):
+    if word in text:
+        return text.index(word)
+    else:
+        champdiff=100
+        champi=-1
+        for i,x in enumerate(text):
+            if word in x:
+                if len(x)-len(word)<champdiff:
+                    champdiff=len(x)-len(word)
+                    champi=i
+        return champi
+
+def find_belong_date(doc,found_date):
+    past_tense=False
+    is_be=False
+    upper=None
+    for token in doc:
+        childrens=[str(child) for child in token.children]
+        for i ,date in enumerate(found_date):
+            if date in childrens and token.text not in found_date:
+                upper=token
+                break
+    if upper==None:
+        return None,None,None,None
+    
+    out=found_date+[upper.text]
+    current_token=upper
+    root=None
+    for token in doc:
+        if token.dep_=="ROOT":
+            root=token
+ 
+    if root==None:
+        return None,None,None,None
+
+    if (root.lemma_=="be"):
+        is_be=True
+    out=out+[root.text]
+   
+    if (current_token.lemma_=="be"):
+        is_be=True
+
+    return is_be,root.tag_,root.lemma_,out
+
+def find_belong_person(doc,found_person):
+    is_be=False
+    root=None 
+    for token in doc:
+        if token.dep_=="ROOT":
+            root=token
+
+    if root==None:
+        return None,None,None 
+    if (root.lemma_=="be"):
+        is_be=True
+    out=found_person+[root.text]
+    return is_be,root.tag_,out
+
+def make_when_question(is_be,is_past,out,lemma,doc,sentence):
+    text=re.findall(r"[\w']+|[.,!?;]", sentence)
+    length=len(text)
+    
+    start_i=min(closest_n(text,out[0]),closest_n(text,out[-2]))
+    end_i=max(closest_n(text,out[0]),closest_n(text,out[-2]))
+    text=text[0:start_i]+text[end_i+1:]
+    root_i=closest_n(text,out[-1])
+
+    if is_be:
+        be=text[root_i]+" "
+        text[root_i]=""
+        ques="When "+be+ " ".join(text)+" ?"
+        # print(ques)
+        return ques
+    else:
+        if is_past=="VBD":
+            do_verb="did "
+        elif is_past=="VBZ":
+            do_verb="does "
+        else:
+            do_verb="do "
+        text[root_i]=lemma
+        ques="When "+do_verb+ " ".join(text)+" ?"
+        return ques
+
+def make_who_question(is_be,is_past,out,doc,sentence):
+    # print(out)
+    text=re.findall(r"[\w']+|[.,!?;]", sentence)
+    
+    length=len(text)
+    start_i=min(closest_n(text,out[0]),closest_n(text,out[-2]))
+    end_i=max(closest_n(text,out[0]),closest_n(text,out[-2]))
+    # print(start_i)
+    # print(end_i)
+    text=text[0:start_i]+text[end_i+1:]
+    root_i=closest_n(text,out[-1])
+
+    if is_be:
+        be=text[root_i]+" "
+        text[root_i]=""
+        ques="Who "+be+ " ".join(text)+" ?"
+        return ques
+    else:
+        if is_past=="VBD":
+            do_verb="did "
+        elif is_past=="VBZ":
+            do_verb="does "
+        else:
+            do_verb="do "
+        verb=text[root_i]
+        text[root_i]=""
+        ques="Who "+verb+ " ".join(text)+" ?"
+        return ques
+
+def when_question(entities,Tree):
+    found_date=-1
+    for sent in entities.sentences:
+        for ent in sent.ents:
+            if ent.type=="DATE":
+                found_date=ent.text
+    if found_date !=-1:
+        found_date=found_date.split()
+        
+        return find_belong_date(Tree,found_date)
+    else:
+        return None,None,None,None
+
+def who_question(entities,Tree):
+    found_person=-1
+    for sent in entities.sentences:
+        for ent in sent.ents:
+          
+            if ent.type=="PERSON":
+                found_person=ent.text
+    if found_person !=-1:
+        found_person=found_person.split()
+        return find_belong_person(Tree,found_person)
+    else:
+        return None,None,None
+
+def where_question(entities,Tree):
+    found_org=-1
+    for sent in entities.sentences:
+        for ent in sent.ents:
+            if ent.type=="ORG":
+                found_person=ent.text
+
+    found_org=found_org.split()
+
+    return find_belong_person(Tree,found_person)
+
+def make_wh_question(sentence):
+    q_list=[]
+    nlp_model_1 = spacy.load("en_core_web_sm")
+    nlp_model_2 = stanza.Pipeline(lang='en', processors='tokenize,ner', verbose = False)
+    doc_ent = nlp_model_2(sentence)
+    doc_tree= nlp_model_1(sentence)
+
+    is_be,is_past,out=who_question(doc_ent,doc_tree)
+    if is_be!=None:
+        q_list.append(make_who_question(is_be,is_past,out,doc_tree,sentence))
+    is_be,is_past,lemma,out=when_question(doc_ent,doc_tree)
+    if is_be!=None:
+        q_list.append(make_when_question(is_be,is_past,out,lemma,doc_tree,sentence))
+
+    return q_list
+
+def make_sentence(path):
+	out1=[]
+	with open(path) as f:
+		line = f.readline()
+		while line:
+			line = f.readline()
+			out1.append(line)
+	pop_list=[]
+	for i,sentence in enumerate(out1):
+		if sentence!="":
+			if sentence=="\n":
+				pop_list.append(i)
+			else:
+				if sentence[-1]=="\n":
+					out1[i]=sentence[:-1]
+		else:
+			pop_list.append(i)
+	offset=0
+	for x in pop_list:
+		out1.pop(x-offset)
+		offset+=1
+	real_out=[]
+	for sentence in out1:
+		temp=sentence.split(".")
+		real_out=real_out+temp
+
+
+	for (i,sent) in enumerate(real_out):
+		temp=sent.split(" ")
+		
+		if len(temp)==2:
+			real_out[i]=".".join(real_out[i-1:i+1])
+			real_out[i-1]=""
+	return real_out
+
+def make_wh_questions(sentences,acc):
+	out=[]
+	
+	for i,sentence in enumerate(sentences):
+		# print(i)
+		temp=make_wh_question(sentence)
+		if temp !=[]:
+			out=out+[temp[0]]
+			acc-=1
+		if(acc==0):
+			return out
+	return out
+
+def main():
+    path = sys.argv[1]
+    q_num = int(sys.argv[2])
+    sentences = make_sentence(path)
+    questions = make_wh_questions(sentences, q_num)
+    
+    for q in questions:
+        print(q)
+
+if __name__ == '__main__':
+    main()
