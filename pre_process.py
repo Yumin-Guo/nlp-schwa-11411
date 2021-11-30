@@ -1,9 +1,11 @@
 import spacy
+
 import stanza
 import re 
 import stanfordnlp
 
 from nlpp import *
+
 
 
 not_used_deprel=['root','acl',"appos", "advcl", "cc", "ccomp", "conj", "dep", "mark","parataxis","ref"]
@@ -44,7 +46,7 @@ def make_sentence(path):
 def make_wh_questions(sentences,acc):
 	out=[]
 	nlp = stanza.Pipeline('en', processors = "tokenize,mwt,pos,lemma,depparse,ner")
-	nlp1 = spacy.load("en_core_web_sm")
+	nlp1 = spacy.load('en_core_web_sm')
 	nlp2 = stanza.Pipeline(lang='en', processors='tokenize,ner')
 	for i,sentence in enumerate(sentences):
 		temp=make_wh_question(sentence,nlp,nlp1,nlp2)
@@ -100,7 +102,7 @@ def simplify_sentences(sentence,nlp):
 	#print(sent_dict)
 	for word in sent_dict:
 		#print(word)
-		print ("{:<15} | {:<10} | {:<15} ".format(str(word['text']),str(word['deprel']), str(sent_dict[word['head']-1]['text'] if word['head'] > 0 else 'ROOT')))
+		#print ("{:<15} | {:<10} | {:<15} ".format(str(word['text']),str(word['deprel']), str(sent_dict[word['head']-1]['text'] if word['head'] > 0 else 'ROOT')))
 		deprel=word['deprel']
 		if "nsubj" in deprel:
 			head=sent_dict[word['head']-1]
@@ -119,6 +121,16 @@ def simplify_sentences(sentence,nlp):
 	return output
 
 
+def change_sequence(sent,root):
+    #string_no_punct = re.sub(r'[^\w\s]','',sent)
+    word_list = sent.split(",")
+    ind=None
+    for i,word  in enumerate(word_list):
+        if (root["text"] in word) or (root["lemma"] in word):
+            ind=i
+            break
+    out=word_list[ind:ind+1]+word_list[:ind]+word_list[i+1:]
+    return ",".join(out)
 #punctuation has not adjusted yet
 #need to think out of a way to deal with it 
 def adjust_repetitions(sents):
@@ -130,15 +142,29 @@ def adjust_repetitions(sents):
 		val=" ".join(sent)
 
 		out.append(val)
+	for i,sent in enumerate(sents):
+		if sents[i-1]==sent:
+			sents[i-1]=""
+
 
 	return out
 
 if __name__ == '__main__':
 	
-	path1="../nlp_proj/a1.txt"
-	sentences=make_sentence(path1)
+	path1="../nlp_proj/chinese.txt"
 	nlp = stanza.Pipeline('en', processors = "tokenize,mwt,pos,lemma,depparse,ner") 
+	
+	'''
+	sent="one of the 48 constellations , leo remains one of the 88 modern constellations today"
+	sent="48 constellations described by the 2nd century astronomer Ptolemy, Leo remains one of the 88 modern constellations today, and one of the most easily recognizable due to its many bright stars and a distinctive shape that is reminiscent of the crouching lion it depicts."
+	print(simplify_sentences(sent,nlp))
+	assert(1==0)
+	'''
+
+	sentences=make_sentence(path1)
+	
 	out=make_wh_questions(sentences,10)
 
 
 	#print(out)
+	

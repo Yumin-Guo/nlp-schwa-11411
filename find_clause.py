@@ -6,11 +6,12 @@ match={"Past":"did",
        "2": "do"}
 
 def delete_clause(sentence,nlp):
+	print(sentence)
 	clause_words=["because", "caused by", "owing to","due to"]
 	clauses=sentence.split(",")
 	split_temp=[]
 	ever_reason=False
-	
+	print(clauses)
 	for i,clause in enumerate(clauses):
 		is_reason=False
 		for word in clause_words:
@@ -22,7 +23,11 @@ def delete_clause(sentence,nlp):
 			split_temp.append(clause)
 	if(ever_reason):
 		drop_clause=",".join(split_temp)
+
 		out=simplify_sentences(drop_clause,nlp)
+		print(drop_clause)
+		print("hello this is out")
+		print(out)
 		return out[0]
 	else:
 		return None
@@ -49,7 +54,9 @@ def make_why_question(candidate,nlp):
 	
 	if aux!=None:
 		phrase=[val[0]["text"] for val in form_words]
-		q="Why "+aux["text"]+ " ".join(phrase)+"?"
+		val=" ".join(phrase)
+		val=change_sequence(val,root)
+		q="Why "+aux["text"]+val +"?"
 	else:
 		phrase=[]
 		do_verb=None
@@ -67,13 +74,13 @@ def make_why_question(candidate,nlp):
 
 			else:
 				phrase.append(val[0]["text"])
-		q="Why "+ do_verb+" "+" ".join(phrase)+"?"
+		val=" ".join(phrase)
+		val=change_sequence(val,root)
+		q="Why "+ do_verb+" "+val+"?"
 	print(q)
 	return q
 
 
 
 
-#nlp = stanza.Pipeline('en', processors = "tokenize,mwt,pos,lemma,depparse,ner") 
-#sent="most chinese people consider the spoken varieties as one single language"
-#make_why_question(sent,nlp)
+

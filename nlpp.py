@@ -12,7 +12,7 @@ match={"Past":"did",
 '''
 Issues:
 1. coreference
-2. 改变提问的从句的顺序，有root 的放在前面 其余的
+2. 改变提问的从句的顺序，有root 的放在前面 其余的（done）
 3. Delete adverbs before time phrase 
 
 
@@ -33,6 +33,7 @@ WHO=0
 WHEN=1
 WHERE=2
 WHAT=3
+
 
 
 
@@ -76,7 +77,9 @@ def make_adv_question(found_date,sent,nlp,unit):
 
     if aux!=None:
         phrase=[val[0]["text"] for val in form_words]
-        q=Wh_word+aux["text"]+ " ".join(phrase)+"?"
+        val=" ".join(phrase)
+        val=change_sequence(val,root)
+        q=Wh_word+aux["text"]+" "+val+"?"
     else:
         phrase=[]
         do_verb=None
@@ -101,10 +104,12 @@ def make_adv_question(found_date,sent,nlp,unit):
 
             else:
                 phrase.append(val[0]["text"])
-        print(phrase)
+        #print(phrase)
 
         if do_verb!=None:
-            q=Wh_word+ do_verb+" "+" ".join(phrase)+"?"
+            val=" ".join(phrase)
+            val=change_sequence(val,root)
+            q=Wh_word+ do_verb+" "+val+"?"
         else:
             q=None
     print(q)
@@ -155,10 +160,18 @@ def make_whoat_question(found_person,sent,nlp,unit):
             break
     
     if aux!=None:
-        verb=aux["text"]
-        for word in words:
-            if word !=aux and word["text"] not in found_person.text:
-                form_words.append((word,word["id"]))
+        val=root["feats"].split("|")
+        
+        if("Tense=Past" in val):
+            verb=root["lemma"]
+            for word in words:
+                if word !=aux and word!=root and word["text"] not in found_person.text:
+                    form_words.append((word,word["id"]))
+        else:
+            verb=aux["text"]
+            for word in words:
+                if word !=aux and word["text"] not in found_person.text:
+                    form_words.append((word,word["id"]))
     else:
         verb=root["text"]
         for word in words:
@@ -172,7 +185,9 @@ def make_whoat_question(found_person,sent,nlp,unit):
         wh="What "
 
     if verb!=None:
-        q=wh+verb+" "+" ".join(phrase)+"?"
+        val=" ".join(phrase)
+        val=change_sequence(val,root)
+        q=wh+verb+" "+val+"?"
     else:
         q=None
     print(q)
@@ -236,6 +251,7 @@ def make_wh_question(sentence,nlp,nlp_model_1,nlp_model_2):
     if check_entity_exist(doc_ent):
         simple_sents=simplify_sentences(sentence,nlp)
         for simple_sent in simple_sents:
+            print(simple_sent)
             doc_tree=nlp_model_1(simple_sent)
             doc_ent=nlp_model_2(simple_sent)
             for i,q_type in enumerate(q_types):
@@ -244,7 +260,9 @@ def make_wh_question(sentence,nlp,nlp_model_1,nlp_model_2):
                 if Q!=None:
                     q_list.append(Q)
      
-    print(q_list) 
+    for i,q in enumerate(q_list):
+        if q in q_list[:i] or q in q_list[i+1:]:
+            q_list[i]=""
 
     return q_list
 
@@ -252,14 +270,9 @@ def make_wh_question(sentence,nlp,nlp_model_1,nlp_model_2):
 #sent="Harry Potter and the Prisoner of Azkaban is a fantasy film directed by Alfonso Cuarón and distributed by Warner Bros in 2004."
 #sent="The film was released on 31 May 2004 in the United Kingdom and on 4 June 2004 in North America, as the first Harry Potter film released into IMAX theatres and to be using IMAX Technology."
 #nlp_model_2 = stanza.Pipeline(lang='en', processors='tokenize,ner')
+#nlp1 = spacy.load('en_core_web_sm')
 #nlp = stanza.Pipeline('en', processors = "tokenize,mwt,pos,lemma,depparse,ner") 
-#path1="../nlp_proj/chinese.txt"
-#entences=make_sentence(path1)
-#for sent in sentences:
-    #doc_ent= nlp_model_2(sent)
-    #if check_entity_exist(doc_ent,"DATE"):
-        #print(sent)
-        #simplify_sentences(sent,nlp)
+#sentence="r leonis  , has a period of 310 days ."
 
 
-
+#print(make_wh_question(sentence,nlp,nlp1,nlp_model_2))
