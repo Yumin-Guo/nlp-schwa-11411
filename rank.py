@@ -8,7 +8,6 @@ import spacy
 nlp = spacy.load("en_core_web_sm")
 
 
-
 # need to adjust the score with respect to the question length 
 # need to test the scale of the correctness score and the importance of the question
 
@@ -23,8 +22,6 @@ def compare_correct(q_list):
 
 	q_list.sort(key=lambda x: x[2])
 	return q_list
-
-
 
 def rank(questions,X,word_list):
 	out=[]

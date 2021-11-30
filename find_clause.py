@@ -8,23 +8,24 @@ match={"Past":"did",
 def delete_clause(sentence,nlp):
 	clause_words=["because", "caused by", "owing to","due to"]
 	clauses=sentence.split(",")
-	candidate=None
 	split_temp=[]
+	ever_reason=False
 	
 	for i,clause in enumerate(clauses):
 		is_reason=False
 		for word in clause_words:
 			if word in clause:
 				is_reason=True
+				ever_reason=True
 				
 		if is_reason==False or len(clauses)==1:
 			split_temp.append(clause)
-
-	drop_clause=",".join(split_temp)
-
-	out=simplify_sentences(drop_clause)
-	
-	return out[0]
+	if(ever_reason):
+		drop_clause=",".join(split_temp)
+		out=simplify_sentences(drop_clause,nlp)
+		return out[0]
+	else:
+		return None
 
 def make_why_question(candidate,nlp):
 	out=[]
@@ -56,8 +57,8 @@ def make_why_question(candidate,nlp):
 			if val[0]==root:
 				phrase.append(root["lemma"])
 				val=root["feats"].split("|")
-				if val[3]=="Tense=Pres":
-					if val[2]=='Person=3':
+				if "Tense=Pres" in val:
+					if 'Person=3' in val:
 						do_verb=match["3"]
 					else:
 						do_verb=match["2"]

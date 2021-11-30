@@ -52,7 +52,9 @@ def make_wh_questions(sentences,acc):
 			out=out+temp
 			acc-=1
 		if(acc==0):
+			print(out)
 			return out
+	print(out)
 	return out
 
 	
@@ -133,10 +135,9 @@ def adjust_repetitions(sents):
 
 if __name__ == '__main__':
 	
-	path1="../nlp_proj/hp.txt"
+	path1="../nlp_proj/a1.txt"
 	sentences=make_sentence(path1)
 	nlp = stanza.Pipeline('en', processors = "tokenize,mwt,pos,lemma,depparse,ner") 
-	
 	out=make_wh_questions(sentences,10)
 
 

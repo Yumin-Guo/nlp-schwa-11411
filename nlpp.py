@@ -3,7 +3,7 @@ import stanza
 import re 
 import nltk
 from pre_process import * 
-
+from find_clause import *
 match={"Past":"did",
        "3":"does",
        "2": "do"}
@@ -12,9 +12,9 @@ match={"Past":"did",
 '''
 Issues:
 1. coreference
-2. lemmatize do, be, verbs etc
+2. 改变提问的从句的顺序，有root 的放在前面 其余的
 3. Delete adverbs before time phrase 
-4. bug for who question
+
 
 
 '''
@@ -31,18 +31,21 @@ l_objects=["NORP","FAC","ORG","PRODUCT","EVENT","WORK_OF_ART","LAW","LANGUAGE"]
 
 WHO=0
 WHEN=1
+WHERE=2
+WHAT=3
 
 
 
 
 
-def make_when_question(found_date,sent,nlp,unit):
+def make_adv_question(found_date,sent,nlp,unit):
     print("this is when question")
     print(sent)
     #print(found_date)
     out=[]
     doc = nlp(sent)
     root=None
+    Wh_word=None
     
     words = doc.sentences[0].to_dict()
     for word in words:
@@ -53,45 +56,58 @@ def make_when_question(found_date,sent,nlp,unit):
     aux=None
     form_words=[]
     for word in words:
-        head_text=str(words[word['head']-1]['text'])
-        print("aux" in word["deprel"])
-        print(word["deprel"])
+        head=words[word['head']-1]
+        head_text=str(head['text'])
         if head_text==root["text"] and "aux" in word["deprel"] and aux==None:
-            print("hello")
             aux=word
 
         else:
-            if(word["text"] not in found_date):
-                form_words.append((word,word["id"]))
+            if(word["text"] not in found_date.text):
+                # this line is for adjust adv/adj
+                if head["start_char"]<found_date.start_char or head["end_char"]>=found_date.end_char:
+                    form_words.append((word,word["id"]))
     form_words.sort(key=lambda x: x[1])
+
     print(aux)
+    if unit in l_geo:
+        Wh_word="Where "
+    else:
+        Wh_word="When "
+
     if aux!=None:
         phrase=[val[0]["text"] for val in form_words]
-        q="When "+aux["text"]+ " ".join(phrase)+"?"
+        q=Wh_word+aux["text"]+ " ".join(phrase)+"?"
     else:
         phrase=[]
         do_verb=None
+
         for val in form_words:
+            print(val)
             if val[0]==root:
+
                 phrase.append(root["lemma"])
                 val=root["feats"].split("|")
                 if "Tense=Pres" in val:
                     if 'Person=3' in val:
+                        
                         do_verb=match["3"]
+
                     else:
+                        
                         do_verb=match["2"]
                 else:
+                    
                     do_verb=match["Past"]
 
             else:
                 phrase.append(val[0]["text"])
-        q="When "+ do_verb+" "+" ".join(phrase)+"?"
-    
-     
+        print(phrase)
 
-
-
-
+        if do_verb!=None:
+            q=Wh_word+ do_verb+" "+" ".join(phrase)+"?"
+        else:
+            q=None
+    print(q)
     return q
 def make_how_much_question(found_num, sent,nlp,unit):
 
@@ -113,7 +129,7 @@ def make_how_much_question(found_num, sent,nlp,unit):
 
 
 
-def make_who_question(found_person,sent,nlp,unit):
+def make_whoat_question(found_person,sent,nlp,unit):
     
     print("this is when question")
     print(sent)
@@ -123,12 +139,12 @@ def make_who_question(found_person,sent,nlp,unit):
     aux=None
     verb=None
    
-   
+
     words = doc.sentences[0].to_dict()
     for word in words:
         if word["deprel"]=="root":
             root=word
-            #print(root)
+            print(root)
             break
     
     form_words=[]
@@ -141,18 +157,25 @@ def make_who_question(found_person,sent,nlp,unit):
     if aux!=None:
         verb=aux["text"]
         for word in words:
-            if word !=aux and word["text"] not in found_person:
+            if word !=aux and word["text"] not in found_person.text:
                 form_words.append((word,word["id"]))
     else:
         verb=root["text"]
         for word in words:
-            if word!=root and word["text"] not in found_person:
+            if word!=root and word["text"] not in found_person.text:
                 form_words.append((word,word["id"]))
     form_words.sort(key=lambda x: x[1])
     phrase=[val[0]["text"] for val in form_words]
-    q="Who "+verb+" "+" ".join(phrase)+"?"
-    
+    if unit in l_person:
+        wh="Who "
+    else:
+        wh="What "
 
+    if verb!=None:
+        q=wh+verb+" "+" ".join(phrase)+"?"
+    else:
+        q=None
+    print(q)
     return q
 
 
@@ -165,31 +188,30 @@ def make_who_question(found_person,sent,nlp,unit):
 def find_part(entities,Tree,sentence,nlp,status):
     if status ==WHEN:
         cats=l_time
-        func=make_when_question
+        func=make_adv_question
 
     elif status==WHO:
         cats=l_person
-        func=make_who_question
+        func=make_whoat_question
     elif status==WHERE:
-
         cats=l_geo
-        func=make_where_qeustion
+        func=make_adv_question
     elif status==WHAT:
         cats=l_objects
-        func=make_what_qeustion
+        func=make_whoat_question
     else:
         cats=l_number
-        func=make_when_qeustion
+        func=make_when_question
     found_entities=-1
     entity_type=None
     for sent in entities.sentences:
         for ent in sent.ents:
+            print(ent.type)
+            #print(cats)
             if ent.type in cats :
-
-                found_entities=ent.text
+                found_entities=ent
                 entity_type=ent.type
     if found_entities !=-1:
-        found_entities=found_entities.split()
         Q=func(found_entities,sentence,nlp,entity_type)
         return Q
 
@@ -204,15 +226,20 @@ def check_entity_exist(entities):
 
 def make_wh_question(sentence,nlp,nlp_model_1,nlp_model_2):
     q_list=[]
-    q_types=["who","when"]
+    q_types=["who","when","where","what"]
 
     doc_ent= nlp(sentence)
+    sent=delete_clause(sentence,nlp)
+    if sent!=None:
+        q=make_why_question(sent,nlp)
+        q_list.append(q)
     if check_entity_exist(doc_ent):
         simple_sents=simplify_sentences(sentence,nlp)
         for simple_sent in simple_sents:
             doc_tree=nlp_model_1(simple_sent)
             doc_ent=nlp_model_2(simple_sent)
             for i,q_type in enumerate(q_types):
+
                 Q=find_part(doc_ent,doc_tree,simple_sent,nlp,i)
                 if Q!=None:
                     q_list.append(Q)
