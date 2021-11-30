@@ -2,133 +2,158 @@ import spacy
 import stanza
 import re 
 import nltk
+from pre_process import * 
+
+match={"Past":"did",
+       "3":"does",
+       "2": "do"}
 
 
-# repetitive codes a lot, but easy for make adjustment according
-# to the question type 
-def closest_n(text,word):
-    if word in text:
-        return text.index(word)
-    else:
-        champdiff=100
-        champi=-1
-        for i,x in enumerate(text):
-            if word in x:
-                if len(x)-len(word)<champdiff:
-                    champdiff=len(x)-len(word)
-                    champi=i
-        return champi
+'''
+Issues:
+1. coreference
+2. lemmatize do, be, verbs etc
+3. Delete adverbs before time phrase 
+4. bug for who question
 
 
-def find_belong_date(doc,found_date):
-    past_tense=False
-    is_be=False
-    
-    for token in doc:
-        childrens=[str(child) for child in token.children]
-        for i ,date in enumerate(found_date):
-            if date in childrens and token.text not in found_date:
-                upper=token
-                break
-    print(upper)
-    if upper==None:
-        return None,None,None,None
-    
-    out=found_date+[upper.text]
-    current_token=upper
+'''
+
+
+
+l_geo=["GPE","LOC"]
+l_cats=["PERSON","NORP","FAC","ORG","GPE","LOC","PRODUCT","EVENT","WORK_OF_ART","LAW","LANGUAGE","DATE","TIME","PERCENT","MONEY","QUANTITY","ORDINAL","CARDINAL"]
+l_time=["DATE","TIME"]
+l_number=["PERCENT","MONEY","QUANTITY","ORDINAL","CARDINAL"]
+l_person=["PERSON"]
+l_objects=["NORP","FAC","ORG","PRODUCT","EVENT","WORK_OF_ART","LAW","LANGUAGE"]
+
+
+WHO=0
+WHEN=1
+
+
+
+
+
+def make_when_question(found_date,sent,nlp,unit):
+    print("this is when question")
+    print(sent)
+    #print(found_date)
+    out=[]
+    doc = nlp(sent)
     root=None
-    for token in doc:
-        if token.dep_=="ROOT":
-            root=token
- 
-    if root==None:
-        return None,None,None,None
+    
+    words = doc.sentences[0].to_dict()
+    for word in words:
+        if word["deprel"]=="root":
+            root=word
+            print(root)
+            break
+    aux=None
+    form_words=[]
+    for word in words:
+        head_text=str(words[word['head']-1]['text'])
+        print("aux" in word["deprel"])
+        print(word["deprel"])
+        if head_text==root["text"] and "aux" in word["deprel"] and aux==None:
+            print("hello")
+            aux=word
 
-    if (root.lemma_=="be"):
-        is_be=True
-    out=out+[root.text]
-    print(out)
+        else:
+            if(word["text"] not in found_date):
+                form_words.append((word,word["id"]))
+    form_words.sort(key=lambda x: x[1])
+    print(aux)
+    if aux!=None:
+        phrase=[val[0]["text"] for val in form_words]
+        q="When "+aux["text"]+ " ".join(phrase)+"?"
+    else:
+        phrase=[]
+        do_verb=None
+        for val in form_words:
+            if val[0]==root:
+                phrase.append(root["lemma"])
+                val=root["feats"].split("|")
+                if "Tense=Pres" in val:
+                    if 'Person=3' in val:
+                        do_verb=match["3"]
+                    else:
+                        do_verb=match["2"]
+                else:
+                    do_verb=match["Past"]
 
+            else:
+                phrase.append(val[0]["text"])
+        q="When "+ do_verb+" "+" ".join(phrase)+"?"
+    
+     
+
+
+
+
+    return q
+def make_how_much_question(found_num, sent,nlp,unit):
+
+    out=[]
+    doc = nlp(sent)
+    words = doc.sentences[0].to_dict()
+    for word in words:
+            if word["text"] not in found_num:
+                out.append((word,word["id"]))
+
+    out.sort(key=lambda x: x[1])
+    phrase=[val[0]["text"] for val in out]
+    out=" ".join(phrase)
+    if unit=="MONEY":
+        out="How much did "+" "+out+"?"
+    else:
+        out="How many did "+" "+out+"?"
+    return out
+
+
+
+def make_who_question(found_person,sent,nlp,unit):
+    
+    print("this is when question")
+    print(sent)
+    out=[]
+    doc = nlp(sent)
+    root=None
+    aux=None
+    verb=None
    
-    if (current_token.lemma_=="be"):
-        is_be=True
-
-    return is_be,root.tag_,root.lemma_,out
-
-def find_belong_person(doc,found_person):
-    is_be=False
-    root=None 
-    for token in doc:
-        if token.dep_=="ROOT":
-            root=token
-
-    if root==None:
-        return None,None,None 
-    if (root.lemma_=="be"):
-        is_be=True
-    out=found_person+[root.text]
-    return is_be,root.tag_,out
-
-
-def make_when_question(is_be,is_past,out,lemma,doc,sentence):
-    text=re.findall(r"[\w']+|[.,!?;]", sentence)
-    length=len(text)
+   
+    words = doc.sentences[0].to_dict()
+    for word in words:
+        if word["deprel"]=="root":
+            root=word
+            #print(root)
+            break
     
-    start_i=min(closest_n(text,out[0]),closest_n(text,out[-2]))
-    end_i=max(closest_n(text,out[0]),closest_n(text,out[-2]))
-    text=text[0:start_i]+text[end_i+1:]
-    root_i=closest_n(text,out[-1])
-
-    if is_be:
-        be=text[root_i]+" "
-        text[root_i]=""
-        ques="When "+be+ " ".join(text)+" ?"
-        print(ques)
-        return ques
-    else:
-        if is_past=="VBD":
-            do_verb="did "
-        elif is_past=="VBZ":
-            do_verb="does "
-        else:
-            do_verb="do "
-        text[root_i]=lemma
-        ques="When "+do_verb+ " ".join(text)+" ?"
-        print(ques)
-        return ques
-
-
-
-def make_who_question(is_be,is_past,out,doc,sentence):
-    print(out)
-    text=re.findall(r"[\w']+|[.,!?;]", sentence)
+    form_words=[]
+    for word in words:
+        head_text=str(words[word['head']-1]['text'])
+        if head_text==root["text"] and "aux" in word["deprel"]:
+            aux=word
+            break
     
-    length=len(text)
-    start_i=min(closest_n(text,out[0]),closest_n(text,out[-2]))
-    end_i=max(closest_n(text,out[0]),closest_n(text,out[-2]))
-    print(start_i)
-    print(end_i)
-    text=text[0:start_i]+text[end_i+1:]
-    root_i=closest_n(text,out[-1])
-
-    if is_be:
-        be=text[root_i]+" "
-        text[root_i]=""
-        ques="Who "+be+ " ".join(text)+" ?"
-        print(ques)
-        return ques
+    if aux!=None:
+        verb=aux["text"]
+        for word in words:
+            if word !=aux and word["text"] not in found_person:
+                form_words.append((word,word["id"]))
     else:
-        if is_past=="VBD":
-            do_verb="did "
-        elif is_past=="VBZ":
-            do_verb="does "
-        else:
-            do_verb="do "
-        verb=text[root_i]
-        text[root_i]=""
-        ques="Who "+verb+ " ".join(text)+" ?"
-        print(ques)
-        return ques
+        verb=root["text"]
+        for word in words:
+            if word!=root and word["text"] not in found_person:
+                form_words.append((word,word["id"]))
+    form_words.sort(key=lambda x: x[1])
+    phrase=[val[0]["text"] for val in form_words]
+    q="Who "+verb+" "+" ".join(phrase)+"?"
+    
+
+    return q
 
 
 
@@ -136,68 +161,78 @@ def make_who_question(is_be,is_past,out,doc,sentence):
 
 
 
-def when_question(entities,Tree):
-    found_date=-1
+
+def find_part(entities,Tree,sentence,nlp,status):
+    if status ==WHEN:
+        cats=l_time
+        func=make_when_question
+
+    elif status==WHO:
+        cats=l_person
+        func=make_who_question
+    elif status==WHERE:
+
+        cats=l_geo
+        func=make_where_qeustion
+    elif status==WHAT:
+        cats=l_objects
+        func=make_what_qeustion
+    else:
+        cats=l_number
+        func=make_when_qeustion
+    found_entities=-1
+    entity_type=None
     for sent in entities.sentences:
         for ent in sent.ents:
-            if ent.type=="DATE":
-                found_date=ent.text
-    if found_date !=-1:
-        found_date=found_date.split()
-        print(found_date)
-        
-        return find_belong_date(Tree,found_date)
-    else:
-        return None,None,None,None
+            if ent.type in cats :
+
+                found_entities=ent.text
+                entity_type=ent.type
+    if found_entities !=-1:
+        found_entities=found_entities.split()
+        Q=func(found_entities,sentence,nlp,entity_type)
+        return Q
 
 
-def who_question(entities,Tree):
-    found_person=-1
+
+def check_entity_exist(entities):
     for sent in entities.sentences:
         for ent in sent.ents:
-          
-            if ent.type=="PERSON":
-                found_person=ent.text
-    if found_person !=-1:
-        found_person=found_person.split()
-        print(found_person)
-        return find_belong_person(Tree,found_person)
-    else:
-        return None,None,None
+            if ent.type in l_cats:
+                return True
+    return False
 
-def where_question(entities,Tree):
-    found_org=-1
-    for sent in entities.sentences:
-        for ent in sent.ents:
-            if ent.type=="ORG":
-                found_person=ent.text
-
-    found_org=found_org.split()
-
-    return find_belong_person(Tree,found_person)
-
-
-
-
-def make_wh_question(sentence):
+def make_wh_question(sentence,nlp,nlp_model_1,nlp_model_2):
     q_list=[]
-    nlp_model_1 = spacy.load("en_core_web_sm")
-    nlp_model_2 = stanza.Pipeline(lang='en', processors='tokenize,ner')
-    doc_ent = nlp_model_2(sentence)
-    doc_tree= nlp_model_1(sentence)
+    q_types=["who","when"]
 
-    is_be,is_past,out=who_question(doc_ent,doc_tree)
-    if is_be!=None:
-        q_list.append(make_who_question(is_be,is_past,out,doc_tree,sentence))
-    is_be,is_past,lemma,out=when_question(doc_ent,doc_tree)
-    if is_be!=None:
-        q_list.append(make_when_question(is_be,is_past,out,lemma,doc_tree,sentence))
+    doc_ent= nlp(sentence)
+    if check_entity_exist(doc_ent):
+        simple_sents=simplify_sentences(sentence,nlp)
+        for simple_sent in simple_sents:
+            doc_tree=nlp_model_1(simple_sent)
+            doc_ent=nlp_model_2(simple_sent)
+            for i,q_type in enumerate(q_types):
+                Q=find_part(doc_ent,doc_tree,simple_sent,nlp,i)
+                if Q!=None:
+                    q_list.append(Q)
+     
+    print(q_list) 
 
     return q_list
 
+#sent="Unless otherwise specified, Chinese texts in this article are written in (Simplified Chinese/Traditional Chinese; Pinyin) format."
+#sent="Harry Potter and the Prisoner of Azkaban is a fantasy film directed by Alfonso Cuarón and distributed by Warner Bros in 2004."
+#sent="The film was released on 31 May 2004 in the United Kingdom and on 4 June 2004 in North America, as the first Harry Potter film released into IMAX theatres and to be using IMAX Technology."
+#nlp_model_2 = stanza.Pipeline(lang='en', processors='tokenize,ner')
+#nlp = stanza.Pipeline('en', processors = "tokenize,mwt,pos,lemma,depparse,ner") 
+#path1="../nlp_proj/chinese.txt"
+#entences=make_sentence(path1)
+#for sent in sentences:
+    #doc_ent= nlp_model_2(sent)
+    #if check_entity_exist(doc_ent,"DATE"):
+        #print(sent)
+        #simplify_sentences(sent,nlp)
 
 
 
-
-    
-    
