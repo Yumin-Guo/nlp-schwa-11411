@@ -14,7 +14,7 @@ Issues:
 1. coreference
 2. 改变提问的从句的顺序，有root 的放在前面 其余的（done）
 3. Delete adverbs before time phrase 
-
+4. How much, How many, whose etc.
 
 
 '''
@@ -33,6 +33,8 @@ WHO=0
 WHEN=1
 WHERE=2
 WHAT=3
+HOWM=4
+
 
 
 
@@ -40,8 +42,8 @@ WHAT=3
 
 
 def make_adv_question(found_date,sent,nlp,unit):
-    print("this is when question")
-    print(sent)
+    #print("this is when question")
+    #print(sent)
     #print(found_date)
     out=[]
     doc = nlp(sent)
@@ -52,24 +54,36 @@ def make_adv_question(found_date,sent,nlp,unit):
     for word in words:
         if word["deprel"]=="root":
             root=word
-            print(root)
+            #print(root)
             break
     aux=None
     form_words=[]
+    adv=[]
     for word in words:
         head=words[word['head']-1]
         head_text=str(head['text'])
+
         if head_text==root["text"] and "aux" in word["deprel"] and aux==None:
             aux=word
 
         else:
             if(word["text"] not in found_date.text):
-                # this line is for adjust adv/adj
-                if head["start_char"]<found_date.start_char or head["end_char"]>=found_date.end_char:
+                
+                if head_text not in found_date.text:
+                    
                     form_words.append((word,word["id"]))
+                else:
+                    if adv==[]:
+                        adv.append((word,word["id"]))
+                    else:
+                        new_insert=adv.pop()
+                        form_words.append(new_insert)
+                        adv.append((word,word["id"]))
+
+
     form_words.sort(key=lambda x: x[1])
 
-    print(aux)
+    #print(aux)
     if unit in l_geo:
         Wh_word="Where "
     else:
@@ -85,7 +99,7 @@ def make_adv_question(found_date,sent,nlp,unit):
         do_verb=None
 
         for val in form_words:
-            print(val)
+           #print(val)
             if val[0]==root:
 
                 phrase.append(root["lemma"])
@@ -112,7 +126,7 @@ def make_adv_question(found_date,sent,nlp,unit):
             q=Wh_word+ do_verb+" "+val+"?"
         else:
             q=None
-    print(q)
+    #print(q)
     return q
 def make_how_much_question(found_num, sent,nlp,unit):
 
@@ -120,7 +134,7 @@ def make_how_much_question(found_num, sent,nlp,unit):
     doc = nlp(sent)
     words = doc.sentences[0].to_dict()
     for word in words:
-            if word["text"] not in found_num:
+            if word["text"] not in found_num.text:
                 out.append((word,word["id"]))
 
     out.sort(key=lambda x: x[1])
@@ -136,8 +150,8 @@ def make_how_much_question(found_num, sent,nlp,unit):
 
 def make_whoat_question(found_person,sent,nlp,unit):
     
-    print("this is when question")
-    print(sent)
+    #print("this is when question")
+    #print(sent)
     out=[]
     doc = nlp(sent)
     root=None
@@ -149,7 +163,7 @@ def make_whoat_question(found_person,sent,nlp,unit):
     for word in words:
         if word["deprel"]=="root":
             root=word
-            print(root)
+            #print(root)
             break
     
     form_words=[]
@@ -165,22 +179,26 @@ def make_whoat_question(found_person,sent,nlp,unit):
         if("Tense=Past" in val):
             verb=root["lemma"]
             for word in words:
-                if word !=aux and word!=root and word["text"] not in found_person.text:
+                head_text=str(words[word['head']-1]['text'])
+                if word !=aux and word!=root and word["text"] not in found_person.text and head_text not in found_person.text:
                     form_words.append((word,word["id"]))
         else:
             verb=aux["text"]
             for word in words:
-                if word !=aux and word["text"] not in found_person.text:
+                head_text=str(words[word['head']-1]['text'])
+                if word !=aux and word["text"] not in found_person.text and head_text not in found_person.text:
                     form_words.append((word,word["id"]))
     else:
         verb=root["text"]
         for word in words:
-            if word!=root and word["text"] not in found_person.text:
+            head_text=str(words[word['head']-1]['text'])
+            if word!=root and word["text"] not in found_person.text and head_text not in found_person.text:
                 form_words.append((word,word["id"]))
     form_words.sort(key=lambda x: x[1])
     phrase=[val[0]["text"] for val in form_words]
     if unit in l_person:
         wh="Who "
+
     else:
         wh="What "
 
@@ -190,7 +208,7 @@ def make_whoat_question(found_person,sent,nlp,unit):
         q=wh+verb+" "+val+"?"
     else:
         q=None
-    print(q)
+    #print(q)
     return q
 
 
@@ -216,17 +234,19 @@ def find_part(entities,Tree,sentence,nlp,status):
         func=make_whoat_question
     else:
         cats=l_number
-        func=make_when_question
+        func=make_how_much_question
     found_entities=-1
     entity_type=None
     for sent in entities.sentences:
         for ent in sent.ents:
-            print(ent.type)
+            
             #print(cats)
             if ent.type in cats :
                 found_entities=ent
                 entity_type=ent.type
+                break
     if found_entities !=-1:
+        print(entity_type)
         Q=func(found_entities,sentence,nlp,entity_type)
         return Q
 
@@ -241,7 +261,7 @@ def check_entity_exist(entities):
 
 def make_wh_question(sentence,nlp,nlp_model_1,nlp_model_2):
     q_list=[]
-    q_types=["who","when","where","what"]
+    q_types=["who","when","where","what","howm"]
 
     doc_ent= nlp(sentence)
     sent=delete_clause(sentence,nlp)
