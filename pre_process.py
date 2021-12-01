@@ -3,7 +3,7 @@ import spacy
 import stanza
 import re 
 import stanfordnlp
-
+import copy
 from nlpp import *
 
 
@@ -65,9 +65,9 @@ def make_wh_questions(sentences,acc):
 
 def find_common(target,words,saved):
 	out=[]
-	#print("_______________________________________")
-	#print("TARGET TEXT")
-	#print(target["text"])
+	print("_______________________________________")
+	print("TARGET TEXT")
+	print(target["text"])
 	for word in words:
 		head_text=str(words[word['head']-1]['text'])
 		head_id=words[word['head']-1]["id"]
@@ -101,22 +101,21 @@ def simplify_sentences(sentence,nlp):
 	output=[]
 	#print(sent_dict)
 	for word in sent_dict:
-		#print(word)
-		#print ("{:<15} | {:<10} | {:<15} ".format(str(word['text']),str(word['deprel']), str(sent_dict[word['head']-1]['text'] if word['head'] > 0 else 'ROOT')))
+		# print(word)
+		print ("{:<15} | {:<10} | {:<15} ".format(str(word['text']),str(word['deprel']), str(sent_dict[word['head']-1]['text'] if word['head'] > 0 else 'ROOT')))
 		deprel=word['deprel']
 		if "nsubj" in deprel:
 			head=sent_dict[word['head']-1]
 			sent_root.append(head)
-
-	for start in sent_root:
-
+	
+	for start in sent_root:	
 		saved=find_common(start,sent_dict,[])
 		saved.append((start,start["id"]))
 		saved.sort(key=lambda x: x[1])
 		simple_sentence=[val[0]["text"] for val in saved]
 		#print(simple_sentence)
 		output.append(simple_sentence)
-	output=adjust_repetitions(output)
+	output=adjust_repetitions(output,nlp)
 	#print(output)
 	return output
 
@@ -129,12 +128,16 @@ def change_sequence(sent,root):
         if (root["text"] in word) or (root["lemma"] in word):
             ind=i
             break
-    out=word_list[ind:ind+1]+word_list[:ind]+word_list[i+1:]
-    return ",".join(out)
+    if ind!=None:
+    	out=word_list[ind:ind+1]+word_list[:ind]+word_list[i+1:]
+    	return ",".join(out)
+    else:
+    	return sent
 #punctuation has not adjusted yet
 #need to think out of a way to deal with it 
-def adjust_repetitions(sents):
+def adjust_repetitions(sents,nlp):
 	out=[]
+	new_out=[]
 	for sent in sents:
 		for (i,word) in enumerate(sent):
 			if sent[i-1]==word:
@@ -142,16 +145,41 @@ def adjust_repetitions(sents):
 		val=" ".join(sent)
 
 		out.append(val)
-	for i,sent in enumerate(sents):
-		if sents[i-1]==sent:
-			sents[i-1]=""
+	print("helllllo")
+	print(out)
+	for i,sent in enumerate(out):
+		sent=sent.split(",")
+		sent2=sent.copy()
+		sent3=[]
+		length=len(sent2)-1
+		for k,x in enumerate(sent):
+			if len(x)>0 or x.isspace()==False:
+				print(x)
+				print(len(x))
+				doc=nlp(x)
+				sent_dict = doc.sentences[0].to_dict()
+				is_all_noun=True
+				for word in sent_dict:
+					if word["xpos"] not in ["NN","NNP","POS"]:
+						is_all_noun=False
+				print(is_all_noun)
+				if is_all_noun:
+					sent2[min(length,k+1)]=sent[k]+" "+sent[k+1]
+					sent2[k]=""
+		for s in sent2:
+			if s!="":
+				sent3.append(s)
 
 
-	return out
+		new_out.append(",".join(sent3))
+
+
+
+	return new_out
 
 if __name__ == '__main__':
 	
-	path1="../nlp_proj/chinese.txt"
+	path1="../nlp_proj/a2.txt"
 	nlp = stanza.Pipeline('en', processors = "tokenize,mwt,pos,lemma,depparse,ner") 
 	
 	'''
